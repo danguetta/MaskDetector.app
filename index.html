@@ -130,6 +130,9 @@
             
             // Load the image model and setup the webcam
             async function init() {
+                // Remove the start button and camera choice                                                        //*
+                document.getElementById("control_elements").style = "display : none"                                //*
+            
                 const modelURL = URL + 'model.json';
                 const metadataURL = URL + 'metadata.json';
 
@@ -151,10 +154,7 @@
                 // forces a front facing camera which ignores the user choice                                       //*
                 await webcam.setup({ "deviceId"   : document.getElementById("webcam_chooser").value,                //*
                                      "facingMode" : "ignore"                                         });            //*
-                
-                // Remove the start button and camera choice                                                        //*
-                document.getElementById("control_elements").innerHTML = ""                                          //*
-                
+                                
                 if (isIos) {
                     document.getElementById('webcam-container').appendChild(webcam.webcam); // webcam object needs to be added in any case to make this work on iOS
                     // grab video-object in any way you want and set the attributes

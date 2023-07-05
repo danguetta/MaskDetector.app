@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>maskdetector.app</title>
+    
+	<style>
+		body {
+			margin:           0;
+			padding:          0;
+			background-color: #ccc;
+            font-family:      'Open Sans', sans-serif;
+            line-height:      20pt
+		}
+
+		.container {
+			width:            800px;
+			margin:           25px auto 25px auto;
+			background-color: #fff;
+			border-radius:    10px;
+			padding:          20px;
+			box-sizing:       border-box;
+		}
+        
+        h1 {
+            text-align:       center;
+            padding-bottom:   20px
+        }
+
+        h2 {
+            text-align:       center;
+            padding-bottom:   20px
+        }        
+        
+        .menu_item {
+            padding-left:     30px;
+            padding-right:    30px;
+        }
+                
+        .icon {
+            width:            70px
+        }
+        
+        .divider
+        {
+            position:         relative;
+            margin-top:       30px;
+            height:           1px;
+        }
+
+        .div-transparent:before
+        {
+            content:          "";
+            position:         absolute;
+            top:              0;
+            left:             5%;
+            right:            5%;
+            width:            90%;
+            height:           1px;
+            background-image: linear-gradient(to right, transparent, rgb(48,49,51), transparent);
+        }
+	</style>
+    
+</head>
+<body>
+
+	<div class="container">
+        <div style="padding:30px">
+            <center><img src="img/logo.jpg" style="width:15%"></center>
+        </div>
+        <h1>Welcome to MaskDetector.app</h1>
+        <h2>A CBS, BA2 Production</h2>
+        
+        <center id="control_elements">
+            <select name="webcam_chooser" id="webcam_chooser"></select>  <button type="button" onclick="init()">Click here to start</button>
+        </center>
+        
+        <center><div id="webcam-container"></div></center>
+        <center><div id="label-container"></div></center>
+
+        <!-- Check whether model files exist; if they do, detect local cameras
+             and add them to the list                                             -->
+        <script type="text/javascript">
+            // Define the URL containing the model; note that for CORS blocking purposes,
+            // it is important that the domain is identical to this page's - even an extra
+            // www can blow things up...
+            const URL = window.location.href + "model/";
+            
+            // Check whether the model file exists
+            fetch(URL + "model.json",
+                  { method : "HEAD" }).then(function (res)
+                                                {
+                                                    if(res.ok)
+                                                        {
+                                                            // First, request permission for webcams and populate the webcam
+                                                            // list (there's probably a better way to do this...?)
+                                                            navigator.mediaDevices
+                                                                     .getUserMedia({video: true, audio: false})
+                                                                     .then(function (stream)
+                                                                               {
+                                                                                   // Requesting permission starts the camera - stop it
+                                                                                   stream.getTracks().forEach(function(track) { track.stop() });
+                                                                                   
+                                                                                   // Add options to the dropdown
+                                                                                   navigator.mediaDevices
+                                                                                            .enumerateDevices()
+                                                                                            .then(function (devices)
+                                                                                                     {
+                                                                                                         for(var i = 0; i < devices.length; i++)
+                                                                                                         {
+                                                                                                             var device = devices[i];
+                                                                                                             if (device.kind === 'videoinput')
+                                                                                                             {
+                                                                                                                  var option = document.createElement('option');
+                                                                                                                  option.value = device.deviceId;
+                                                                                                                  option.text = device.label || 'Camera ' + (i+1);
+                                                                                                                  document.getElementById('webcam_chooser').appendChild(option);
+                                                                                                             }
+                                                                                                         }
+                                                                                                     });
+                                                                                })
+                                                                     .catch(function (err)
+                                                                               {
+                                                                                   // We didn't get permission
+                                                                                   document.getElementById("control_elements").innerHTML = '<div style="background-color:red;color:white;padding:2%;">Please reload and grant webcam permissions.</div>';
+                                                                               });
+                                                        } else {
+                                                            document.getElementById("control_elements").innerHTML = '<div style="background-color:red;color:white;padding:2%;">No model found! Please train a model first...</div>';
+                                                        }
+                                                });
+        </script>
+
+        <!-- Load the teachable machine scripts -->
+        <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>        
+        
+        <!-- Define the teacheable machine functions -->
+        <script type="text/javascript">
+            /* IMPORTANT: The code automatically produced by the teachable machine trained output seems
+                          to be different than the one in
+                                 https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
+                          which includes iOS specific code. I used the code from there. Lines that end with //* have been
+                          modified from the original.                                                                           */
+
+            // More API functions here:
+            // https://github.com/googlecreativelab/teachablemachine-community/tree/master/libraries/image
+
+            // Original code defined URL here - we defined it above                                                 //*
+            
+            let model, webcam, labelContainer, maxPredictions;
+
+            let isIos = false; 
+            // fix when running demo in ios, video will be frozen;
+            if (window.navigator.userAgent.indexOf('iPhone') > -1
+                    || window.navigator.userAgent.indexOf('iPad') > -1) {
+              isIos = true;
+            }
+            
+            // Load the image model and setup the webcam
+            async function init() {
+                const modelURL = URL + 'model.json';
+                const metadataURL = URL + 'metadata.json';
+
+                // load the model and metadata
+                // Refer to tmImage.loadFromFiles() in the API to support files from a file picker
+                // or files from your local hard drive
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+
+                // Convenience function to setup a webcam
+                const flip = true; // whether to flip the webcam; it is flipped in original TM training, and        //*
+                                   // probably on images submitted from student phones, so leave it to true         //*
+                const width = 200;
+                const height = 200;
+                webcam = new tmImage.Webcam(width, height, flip);
+                
+                // Request access to the specific webcam specified. If we don't include a facingMode                //*
+                // element (or if we make it blank) the teachable machine javascript library automatically          //*
+                // forces a front facing camera which ignores the user choice                                       //*
+                await webcam.setup({ "deviceId"   : document.getElementById("webcam_chooser").value,                //*
+                                     "facingMode" : "ignore"                                         });            //*
+                
+                // Remove the start button and camera choice                                                        //*
+                document.getElementById("control_elements").innerHTML = ""                                          //*
+                
+                if (isIos) {
+                    document.getElementById('webcam-container').appendChild(webcam.webcam); // webcam object needs to be added in any case to make this work on iOS
+                    // grab video-object in any way you want and set the attributes
+                    const webCamVideo = document.getElementsByTagName('video')[0];
+                    webCamVideo.setAttribute("playsinline", true); // written with "setAttribute" bc. iOS buggs otherwise
+                    webCamVideo.muted = "true";
+                    webCamVideo.style.width = width + 'px';
+                    webCamVideo.style.height = height + 'px';
+                } else {
+                    document.getElementById("webcam-container").appendChild(webcam.canvas);
+                }
+                // append elements to the DOM
+                labelContainer = document.getElementById('label-container');
+                for (let i = 0; i < maxPredictions; i++) { // and class labels
+                    labelContainer.appendChild(document.createElement('div'));
+                }
+                webcam.play();
+                window.requestAnimationFrame(loop);
+            }
+
+            async function loop() {
+                webcam.update(); // update the webcam frame
+                await predict();
+                window.requestAnimationFrame(loop);
+            }
+
+            // run the webcam image through the image model
+            async function predict() {
+                // predict can take in an image, video or canvas html element
+                let prediction;
+                if (isIos) {
+                    prediction = await model.predict(webcam.webcam);
+                } else {
+                    prediction = await model.predict(webcam.canvas);
+                }
+                
+                // Get the maximum probability                                                                      //*
+                var max_pred = 0;                                                                                   //*
+                var max_class_id = "";                                                                              //*
+                for (let i = 0; i < maxPredictions; i++) {                                                          //*
+                    max_pred = Math.max(max_pred, prediction[i].probability.toFixed(2));                            //*
+                    if (max_pred == prediction[i].probability.toFixed(2)) {                                         //*
+                        max_class_id = i;                                                                           //*
+                    }                                                                                               //*
+                }                                                                                                   //*
+                                                                                                                    //*
+                for (let i = 0; i < maxPredictions; i++) {                                                          //*
+                    const classPrediction =                                                                         //*
+                        prediction[i].className + ': ' + prediction[i].probability.toFixed(2);                      //*
+                                                                                                                    //*
+                    if (prediction[i].probability.toFixed(2) == max_pred) {                                         //*
+                        labelContainer.childNodes[i].innerHTML = "<b>" + classPrediction + "</b>";                  //*
+                    } else {                                                                                        //*
+                        labelContainer.childNodes[i].innerHTML = classPrediction;                                   //*
+                    }                                                                                               //*
+                }                                                                                                   //*
+                                                                                                                    //*
+                // Outline the canvas with the right color                                                          //*
+                if (max_class_id == 0) {                                                                            //*
+                    document.getElementById("webcam-container").children[0].style = "border: 5px solid green";      //*
+                } else {                                                                                            //*
+                    document.getElementById("webcam-container").children[0].style = "border: 5px solid red";        //*
+                }                                                                                                   //*
+            }
+        </script>
+
+
+	</div>
+</body>
+</html>

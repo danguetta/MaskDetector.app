@@ -1,1 +1,0 @@
-{"tfjsVersion":"1.3.1","tmVersion":"2.4.6","packageVersion":"0.8.4-alpha2","packageName":"@teachablemachine/image","timeStamp":"2023-07-05T18:58:01.389Z","userMetadata":{},"modelName":"tm-my-image-model","labels":["Mask on","Mask off","Mask on wrong"],"imageSize":224}

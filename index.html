@@ -131,8 +131,9 @@
             // Load the image model and setup the webcam
             async function init() {
                 // Remove the start button and camera choice                                                        //*
-                document.getElementById("control_elements").style = "display : none"                                //*
-            
+                var webcam_id = document.getElementById("webcam_chooser").value                                     //*
+                document.getElementById("control_elements").innerHTML = '<div style="background-color:yellow;color:black;padding:2%;">Please wait while your camera loads...</div>'    //*
+                
                 const modelURL = URL + 'model.json';
                 const metadataURL = URL + 'metadata.json';
 
@@ -152,7 +153,7 @@
                 // Request access to the specific webcam specified. If we don't include a facingMode                //*
                 // element (or if we make it blank) the teachable machine javascript library automatically          //*
                 // forces a front facing camera which ignores the user choice                                       //*
-                await webcam.setup({ "deviceId"   : document.getElementById("webcam_chooser").value,                //*
+                await webcam.setup({ "deviceId"   : webcam_id,                                                      //*
                                      "facingMode" : "ignore"                                         });            //*
                                 
                 if (isIos) {
@@ -173,6 +174,7 @@
                 }
                 webcam.play();
                 window.requestAnimationFrame(loop);
+                document.getElementById("control_elements").style = "display : none"                                //*
             }
 
             async function loop() {
